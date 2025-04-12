@@ -1,0 +1,7 @@
+{
+  "name": "line-webhook-vercel",
+  "version": "1.0.0",
+  "dependencies": {
+    "googleapis": "^105.0.0"
+  }
+}
