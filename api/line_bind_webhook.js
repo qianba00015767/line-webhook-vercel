@@ -1,10 +1,8 @@
-// api/line_bind_webhook.js
-
 import { google } from 'googleapis';
 
-const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 const SHEET_ID = '1BltLlWelE3czyYGKScBGmYytBFJLNhcG5mY8tUh5zZg';
 const SHEET_NAME = '綁定資料';
+const SCOPES = ['https://www.googleapis.com/auth/spreadsheets'];
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -18,47 +16,53 @@ export default async function handler(req, res) {
   const match = messageText?.match(/^綁定(09\d{8})$/);
 
   if (!userId || !match) {
-    return res.status(200).json({ message: '格式錯誤或缺少 userId' });
+    return res.status(200).json({ message: '無效綁定格式或缺少 userId' });
   }
 
   const phone = match[1];
   const time = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
 
   try {
+    // 1. 讀取 Vercel 環境變數中的 JSON 金鑰
+    const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+
     const auth = new google.auth.GoogleAuth({
-      credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON),
+      credentials,
       scopes: SCOPES,
     });
 
     const sheets = google.sheets({ version: 'v4', auth });
 
+    // 2. 寫入 Google Sheets
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
       range: `${SHEET_NAME}!A:C`,
       valueInputOption: 'USER_ENTERED',
       requestBody: {
-        values: [[phone, userId, time]],
+        values: [[phone, userId, time]]
       },
     });
 
-    // 回覆 LINE 用戶
+    // 3. 回覆 LINE 綁定成功訊息
     const reply = {
       replyToken: event.replyToken,
-      messages: [{ type: 'text', text: `✅ 綁定成功：${phone}` }],
+      messages: [
+        { type: 'text', text: `✅ 綁定成功：${phone}` }
+      ]
     };
 
     await fetch('https://api.line.me/v2/bot/message/reply', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer du+9/lpGYmg2gvBnwg7Ek7uo22lnd33HeVz441b2SZ/bZl7xNOn0NufyhbjbI87hLAZhu2xpv0zik4JwDNccyh9X8MiUsl7Ptur/3qAI94MN59BZr4sZryJMY475yoOrvQI+hdUlafKjxXf8sw5SjwdB04t89/1O/w1cDnyilFU=',
+        'Authorization': `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
       },
-      body: JSON.stringify(reply),
+      body: JSON.stringify(reply)
     });
 
     res.status(200).json({ message: '綁定成功' });
   } catch (error) {
-    console.error('寫入 Google Sheets 錯誤:', error);
-    res.status(500).json({ message: '寫入 Sheets 失敗', error: error.message });
+    console.error('❌ 錯誤：', error);
+    res.status(500).json({ message: '內部伺服器錯誤', error });
   }
 }
