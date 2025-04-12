@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method Not Allowed' });
   }
-
+console.log('📥 Received body:', JSON.stringify(req.body));
   const body = req.body;
   const event = body?.events?.[0];
   const userId = event?.source?.userId;
