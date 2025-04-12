@@ -1,52 +1,54 @@
-// line_bind_webhook.js
+// api/line_bind_webhook.js
+
+import fs from 'fs';
+import path from 'path';
+
+const ACCESS_TOKEN = 'du+9/lpGYmg2gvBnwg7Ek7uo22lnd33HeVz441b2SZ/bZl7xNOn0NufyhbjbI87hLAZhu2xpv0zik4JwDNccyh9X8MiUsl7Ptur/3qAI94MN59BZr4sZryJMY475yoOrvQI+hdUlafKjxXf8sw5SjwdB04t89/1O/w1cDnyilFU=';
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ message: "Method Not Allowed" });
-  }
+  if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
 
   try {
-    const body = req.body;
+    const event = req.body.events?.[0];
+    const userId = event?.source?.userId;
+    const text = event?.message?.text || '';
 
-    // 假設 body.events[0].type 是 'message' 且使用者輸入電話號碼
-    const event = body.events && body.events[0];
+    // 檢查格式
+    const match = text.match(/^綁定(\d{8,})$/);
+    if (!match || !userId) return res.status(200).send('格式錯誤');
 
-    if (!event || event.type !== "message" || !event.message?.text) {
-      return res.status(200).json({ message: "Not a message event" });
+    const phone = match[1];
+    const filepath = path.resolve('api/binding.json');
+
+    // 讀取資料
+    let data = {};
+    if (fs.existsSync(filepath)) {
+      const raw = fs.readFileSync(filepath);
+      data = JSON.parse(raw.toString());
     }
 
-    const userId = event.source?.userId;
-    const phone = event.message.text.trim();
+    // 更新資料
+    data[phone] = userId;
+    fs.writeFileSync(filepath, JSON.stringify(data, null, 2));
 
-    // TODO: 自行加上判斷格式是否為電話號碼，例如長度、數字等
+    // 回覆用戶
+    const reply = {
+      replyToken: event.replyToken,
+      messages: [{ type: 'text', text: `✅ 綁定成功：${phone}` }]
+    };
 
-    // 讀取舊的 JSON 紀錄（可改為儲存在其他儲存空間）
-    const fs = require("fs");
-    const path = require("path");
-    const filePath = path.resolve("./user_db.json");
+    await fetch('https://api.line.me/v2/bot/message/reply', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${ACCESS_TOKEN}`
+      },
+      body: JSON.stringify(reply)
+    });
 
-    let userData = [];
-    if (fs.existsSync(filePath)) {
-      const fileContent = fs.readFileSync(filePath, "utf8");
-      userData = JSON.parse(fileContent || "[]");
-    }
-
-    // 更新或新增
-    const existing = userData.find(u => u.userId === userId);
-    if (existing) {
-      existing.phone = phone;
-    } else {
-      userData.push({ userId, phone });
-    }
-
-    // 寫入
-    fs.writeFileSync(filePath, JSON.stringify(userData, null, 2));
-
-    // 回覆訊息給使用者
-    return res.status(200).json({ reply: `收到電話號碼：${phone}` });
-
+    return res.status(200).send('OK');
   } catch (err) {
-    console.error("Webhook Error:", err);
-    return res.status(500).json({ message: "Internal Server Error", error: err.message });
+    console.error('Webhook Error:', err);
+    return res.status(500).send('Internal Server Error');
   }
 }
